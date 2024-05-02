@@ -3,9 +3,9 @@
 This tool streamlines the workflow for preparing files for laser cutters.
 
 Instructions:
-    1. Export the desired cuts as a pdf (DO NOT export svg files directly, that's currently broken)
-    2. Convert the pdf to an svg using Inkscape, Illustrator, or svgconverter.com/pdf-to-svg
-    3. Run this tool on the svg
+    1. Export the desired cuts as a pdf (DO NOT export svg files directly, that's currently broken in OnShape)
+    2. (Convert the pdf to an svg using Inkscape, Illustrator - this step occurs automatically if you have Inkscape downloaded)
+    3. Run this tool on the pdf/svg
     4. Check the results in Illustrator/Inkscape
 
 
@@ -15,9 +15,6 @@ INSTALLING DEPENDENCIES
         pip install reportlab
         pip install svglib
         pip install pypdf
-
-Alternatively, you can skip installing poppler and pdf2image, and convert the downloaded pdfs 
-to svgs using the tool of your choice (Illustrator, Inkscape, svgconverter.com/pdf-to-svg, etc.)
 
 Author: Violet Saathoff
 """
@@ -32,7 +29,6 @@ import reportlab.graphics as rl
 from reportlab.graphics import renderPDF
 from reportlab.graphics.renderbase import colors
 from svglib.svglib import svg2rlg
-#import drawsvg as draw
 #from pypdf import PdfMerger
 
 
