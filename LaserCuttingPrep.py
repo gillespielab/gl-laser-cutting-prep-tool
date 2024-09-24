@@ -181,8 +181,6 @@ def Path(pts: list = None, ops: list = None, path: rl.shapes.Path = None, isClip
         return path
     else:
         return rl.shapes.Path(pts, ops, isClipPath, **kwargs)
-#"""
-
 
 
 """Main Scripts"""
