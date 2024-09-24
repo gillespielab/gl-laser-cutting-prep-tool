@@ -114,38 +114,6 @@ def Line(x1: float, y1: float, x2: float, y2: float, **kwargs):
     return Path([x1, y1, x2, y2], [operators.MoveTo, operators.LineTo], **kwargs)
     #return rl.shapes.Line(x1, y1, x2, y2, **kwargs)
 
-"""
-metrics = defaultdict(int)
-
-def Path(pts: list = None, ops: list = None, path: rl.shapes.Path = None, isClipPath: bool = 0, **kwargs):
-    "create a new path from a set of points/operators, or add to an existing path (assuming the 2 paths meet)"
-    if path:
-        if points_are_equal(pts[:2], path.points[-2:]):
-            metrics['A']
-            first_move = True
-            for o, controls in operators.parse(ops, pts):
-                if o != operators.MoveTo or not first_move:
-                    add_segment_to_path(path, o, controls)
-                    first_move = False
-            return path
-        elif points_are_equal(pts[:2], path.points[:2]):
-            metrics['B'] += 1
-            ops = [operators.MoveTo] + ops[1:][::-1]
-            grouped_points = [pts[i:i + 2] for i in range(0, len(pts), 2)][::-1]
-            points = []
-            for P in grouped_points:
-                points.extend(P)
-            return Path(points, ops, path, isClipPath, **kwargs)
-        elif False and points_are_equal(pts[-2:], path.points[-2:]):
-            pass
-        else:
-            metrics['BAD'] += 1
-            for o, controls in operators.parse(ops, pts):
-                add_segment_to_path(path, o, controls)
-            return path
-    else:
-        return rl.shapes.Path(pts, ops, isClipPath, **kwargs)
-"""
 metrics = defaultdict(int)
 
 def reverse_path(pts:list, ops:list):
