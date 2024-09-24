@@ -3,18 +3,25 @@
 This tool streamlines the workflow for preparing files for laser cutters.
 
 Instructions:
-    1. Export the desired cuts as a pdf (DO NOT export svg files directly, that's currently broken in OnShape)
-    2. (Convert the pdf to an svg using Inkscape, Illustrator - this step occurs automatically if you have Inkscape downloaded)
-    3. Run this tool on the pdf/svg
+    1. Export the desired cuts as a pdf (DO NOT export svg files directly, that's currently broken)
+    2. Convert the pdf to an svg using Inkscape, Illustrator, or svgconverter.com/pdf-to-svg
+    3. Run this tool on the svg
     4. Check the results in Illustrator/Inkscape
 
+USAGE:
+    >>> LaserCuttingPrep.py <filename> <options>
 
+RECOMMENDED:
+    >>> LaserCuttingPrep.py <filename> --output <output path> --margin 0.3 --uls --centerv --debug
 
 INSTALLING DEPENDENCIES
     Run the following commands in an Anaconda prompt, run as an administrator:
         pip install reportlab
         pip install svglib
         pip install pypdf
+
+Alternatively, you can skip installing poppler and pdf2image, and convert the downloaded pdfs 
+to svgs using the tool of your choice (Illustrator, Inkscape, svgconverter.com/pdf-to-svg, etc.)
 
 Author: Violet Saathoff
 """
@@ -29,6 +36,7 @@ import reportlab.graphics as rl
 from reportlab.graphics import renderPDF
 from reportlab.graphics.renderbase import colors
 from svglib.svglib import svg2rlg
+#import drawsvg as draw
 #from pypdf import PdfMerger
 
 
@@ -73,7 +81,6 @@ class dist:
         """compute the L2 (euclidean) distance between 2 points"""
         return dist.l2s(x1, y1, x2, y2) ** 0.5
 
-
 def ctrange(start: int, end: int = None, step: int = None, N:int = 100001, desc: str = ''):
     if end is None:
         end = start
@@ -81,7 +88,7 @@ def ctrange(start: int, end: int = None, step: int = None, N:int = 100001, desc:
     if step is None:
         step = 1
 
-    if N > 100000:
+    if False and N > 100000: # TODO: fix trange (it says 'step' isn't valid)
         return trange(start, end, step=step, desc=desc)
     else:
         return range(start, end, step)
@@ -107,17 +114,106 @@ def Line(x1: float, y1: float, x2: float, y2: float, **kwargs):
     return Path([x1, y1, x2, y2], [operators.MoveTo, operators.LineTo], **kwargs)
     #return rl.shapes.Line(x1, y1, x2, y2, **kwargs)
 
+"""
+metrics = defaultdict(int)
+
+def Path(pts: list = None, ops: list = None, path: rl.shapes.Path = None, isClipPath: bool = 0, **kwargs):
+    "create a new path from a set of points/operators, or add to an existing path (assuming the 2 paths meet)"
+    if path:
+        if points_are_equal(pts[:2], path.points[-2:]):
+            metrics['A']
+            first_move = True
+            for o, controls in operators.parse(ops, pts):
+                if o != operators.MoveTo or not first_move:
+                    add_segment_to_path(path, o, controls)
+                    first_move = False
+            return path
+        elif points_are_equal(pts[:2], path.points[:2]):
+            metrics['B'] += 1
+            ops = [operators.MoveTo] + ops[1:][::-1]
+            grouped_points = [pts[i:i + 2] for i in range(0, len(pts), 2)][::-1]
+            points = []
+            for P in grouped_points:
+                points.extend(P)
+            return Path(points, ops, path, isClipPath, **kwargs)
+        elif False and points_are_equal(pts[-2:], path.points[-2:]):
+            pass
+        else:
+            metrics['BAD'] += 1
+            for o, controls in operators.parse(ops, pts):
+                add_segment_to_path(path, o, controls)
+            return path
+    else:
+        return rl.shapes.Path(pts, ops, isClipPath, **kwargs)
+"""
+metrics = defaultdict(int)
+
+def reverse_path(pts:list, ops:list):
+    ops = [operators.MoveTo] + ops[1:][::-1]
+    grouped = [pts[i:i + 2] for i in range(0, len(pts), 2)][::-1]
+    points = []
+    for P in grouped:
+        points.extend(P)
+    return points, ops
 
 def Path(pts: list = None, ops: list = None, path: rl.shapes.Path = None, isClipPath: bool = 0, **kwargs):
     """create a new path from a set of points/operators, or add to an existing path (assuming the 2 paths meet)"""
+    
+    """
+    the cases are organized by which endpoints match up, where 'path' is a path which goes from A->B, 
+    and 'pts'/'ops' is another path which goes from C->D:
+        B=C: 
+            A->B, C->D
+            A->B, B->D
+            A->B->B->D
+            A->B->D
+        A=C:
+            A->B, C->D
+            A->B, A->D
+            B->A, A->D
+            B->A->A->D
+            B->A->D
+        B=D:
+            A->B, C->D
+            A->B, C->B
+            A->B, B->C
+            A->B->B->C
+            A->B->C
+        A=D:
+            A->B, C->D
+            A->B, C->A
+            B->A, A->C
+            B->A->A->C
+            B->A->C
+    in the event none of these cases are matched (which really shouldn't be possible), we do still need to 
+    preserve both paths as A->B->C->D where the segment from B->C is left as a MoveTo operation
+    
+    (note that all paths must begin with a MoveTo operation)
+    """
+    
     if path:
-        for o, controls in operators.parse(ops, pts):
-            add_segment_to_path(path, o, controls)
+        if points_are_equal(path.points[-2:], pts[:2]):
+            metrics['B=C'] += 1
+        elif points_are_equal(path.points[:2], pts[:2]):
+            metrics['A=C'] += 1
+            path.points, path.operators = reverse_path(path.points, path.operators)
+        elif points_are_equal(path.points[-2:], pts[-2:]): # TODO: test this
+            metrics['B=D'] += 1
+            pts, ops = reverse_path(pts, ops)
+        elif points_are_equal(path.points[:2], pts[-2:]): # TODO: test this
+            metrics['A=D'] += 1
+            pts, ops = reverse_path(pts, ops)
+            path.points, path.operators = reverse_path(path.points, path.operators)
+        else:
+            metrics['BAD'] += 1
+            ops = [None] + ops
+            pts = [None]*2 + pts
+        path.operators.extend(ops[1:])
+        path.points.extend(pts[2:])
         return path
     else:
         return rl.shapes.Path(pts, ops, isClipPath, **kwargs)
-
-
+#"""
 
 
 
@@ -144,37 +240,51 @@ def main():
                              + '(default: same directory as input file)')
     parser.add_argument('--passes', type=int, default=1,
                         help='the number of times to cut the entire document (default: 1)')
-    parser.add_argument('--epsilon', type=float, default=1e-10,
+    parser.add_argument('--epsilon', type=float, default=1,
                         help='if the distance between 2 points (in pt) is less than epsilon, they are considered the same point (default: 1e-10)')
     parser.add_argument('--inkscape', type=str, default=r"C:\Program Files\Inkscape",
                         help=r'the directory to inkscape.exe (default: C:\Program Files\Inkscape)')
     parser.add_argument('--center', action='store_true', default=False,
                         help='indicates that cut should have equal margins on all sides (overrides --margin)')
+    parser.add_argument('--centerv', action='store_true', default=False,
+                        help='indicates that cut should have equal margins on the top/bottom (overrides --margin)')
+    parser.add_argument('--centerh', action='store_true', default=False,
+                        help='indicates that cut should have equal margins on the left/right (overrides --margin)')
+    parser.add_argument('--uls', action='store_true', default=False,
+                        help='indicates that the cutter is a ULS machine')
     parser.add_argument('--epilog', action='store_true', default=False,
                         help='indicates that the cutter is an Epilog machine')
     parser.add_argument('--preserve-rectangles', action='store_true', default=False,
                         help="use this if none of your parts are true rectangles")
     parser.add_argument('--autoscale', action='store_true', default=False,
                         help="set the height/width based on the size of the drawing")
+    parser.add_argument('--save-svg', action='store_true', default=False,
+                        help="save the pathed svg file (useful for debugging the pathing algorithm)")
     parser.add_argument('--debug', action='store_true', default=False,
                         help="enable debug mode")
     global args
     args = parser.parse_args()
 
     # Check how Many Printers are Selected
-    printers = sum([args.epilog])
+    printers = sum([args.uls, args.epilog])
     if printers == 0:
-        args.epilog = True
-        print("warning: no printer selected, defaulting to Epilog")
+        args.uls = True
+        print("warning: no printer selected, defaulting to ULS")
     elif printers > 1:
         print("warning: multiple printers selected, this may result in formatting errors")
 
     # Get the Absolute Filepath
     args.filepath = os.path.abspath(args.filepath)
 
-    # Set Format Variables
-    args.strokeWidth = 0.01 if args.epilog else 1
-    args.strokeColor = colors.black
+    # Set Format Variables by Printer
+    if args.uls:
+        args.strokeWidth = 0.01 # hairline (0.25? 0.5?)
+        args.strokeColor = colors.red
+        # etch: blue
+        # raster: black
+    elif args.epilog:
+        args.strokeWidth = 0.01
+        args.strokeColor = colors.black
 
     # Convert the Height/Width from inches to points
     args.height *= 72
@@ -251,6 +361,7 @@ def prep_file(filename: str):
     elements = get_lines(svg)
     n = len(elements)
 
+    # TODO: get this to work
     # Remove Overlapping Lines
     # elements = remove_overlap(elements)
     # if args.debug: print(f"{n - len(elements)} overlapping elements removed")
@@ -264,9 +375,15 @@ def prep_file(filename: str):
 
     # Draw the SVG
     d = draw_svg(paths, height, width)
-
-    # Save the SVG as a PDF
+    
+    # Save the SVG
     folder, name, suffix = parse_filepath(filename)
+    if args.save_svg:
+        svgname = name + ' - pathed'
+        print(f"saving pathed svg in '{folder}'")
+        d.save(formats = ['svg'], outDir = folder, fnRoot = svgname)
+    
+    # Save the SVG as a PDF
     pdfname = folder + '\\' + name + ' - pathed.pdf'
     renderPDF.drawToFile(d, pdfname)
     print(f"pdf saved at '{pdfname}'")
@@ -318,11 +435,14 @@ def draw_svg(elements: list, h0, w0, **svg_args) -> rl.shapes.Drawing:
     h = y1 - y0
 
     # Calculate the Margins
+    mx = my = args.margin
     if args.center:
         mx = (args.width - w) / 2
         my = (args.height - h) / 2
-    else:
-        mx = my = args.margin
+    if args.centerv:
+        my = (args.height - h) / 2
+    if args.centerh:
+        mx = (args.width - w) / 2
 
     # Set the Drawing Height/Width
     W, H = (w + 2 * mx, h + 2 * my) if args.autoscale else (args.width, args.height)
@@ -341,8 +461,8 @@ def draw_svg(elements: list, h0, w0, **svg_args) -> rl.shapes.Drawing:
     return d
 
 
-def points_are_equal(P: tuple, Q: tuple, eps = 1e-5, measure = dist.l2) -> bool:
-    return measure(*P, *Q) < eps
+def points_are_equal(P: tuple, Q: tuple, measure = dist.l2) -> bool:
+    return measure(*P, *Q) < args.epsilon
 
 
 def path_is_closed(path: rl.shapes.Path) -> bool:
@@ -638,14 +758,14 @@ def get_endpoint_map(elements: list) -> tuple:
 
 def make_paths(elements: list) -> list:
     """join line segments into paths (greedy), returns a list of path elements"""
-
+    
     # Add an Individual Line to a Path
     def add_line(path, e, P, Q):
         if type(e) == rl.shapes.Line:
             if path.points:
-                if encode_point(tuple(path.points[-2:])) == encode_point(tuple(P)):
+                if points_are_equal(path.points[-2:], P):
                     path.lineTo(*Q)
-                elif encode_point(tuple(path.points[-2:])) == encode_point(tuple(Q)):
+                elif points_are_equal(path.points[-2:], P):
                     path.lineTo(*P)
                 else:
                     path.moveTo(*P)
@@ -756,5 +876,5 @@ if __name__ == '__main__':
 
         print(traceback.format_exc())
     finally:
-        #input("\npress enter to continue...") TODO: un-comment this
+        #input("\npress enter to continue...") TODO?: un-comment this for running in a terminal
         pass
