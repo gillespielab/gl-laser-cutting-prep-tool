@@ -81,6 +81,21 @@ class dist:
         """compute the L2 (euclidean) distance between 2 points"""
         return dist.l2s(x1, y1, x2, y2) ** 0.5
 
+def format_time(seconds: float):
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    hours = int(round(hours))
+    minutes = int(round(minutes))
+    seconds = int(round(seconds))
+    if minutes < 10: minutes = f"0{minutes}"
+    if seconds < 10: seconds = f"0{seconds}"
+    if hours:
+        return f"{hours}:{minutes}:{seconds}"
+    elif minutes:
+        return f"{minutes}:{seconds}"
+    else:
+        return f"{seconds} seconds"
+
 def ctrange(start: int, end: int = None, step: int = None, N:int = 100001, desc: str = ''):
     if end is None:
         end = start
@@ -183,6 +198,7 @@ def Path(pts: list = None, ops: list = None, path: rl.shapes.Path = None, isClip
         return rl.shapes.Path(pts, ops, isClipPath, **kwargs)
 
 
+
 """Main Scripts"""
 
 
@@ -190,7 +206,19 @@ def Path(pts: list = None, ops: list = None, path: rl.shapes.Path = None, isClip
 args = None
 
 
-def main():
+def main(argv:list = None):
+    """
+    for usage, run:
+        >>> main(["-h"])
+    
+    when passing argv in the console, all arguments/values must be separate strings in a list, and 
+    you must include the double-hyphens for flags (i.e. use [..., "--margin", "0.3", ...], not 
+    [..., "margin", 0.3, ...] - note that in the second case both the parameter name and the value 
+    are invalid). Also, it is often helpful to remember that r-strings ignore backslash as an 
+    escape character, which is useful when copy/pasting the path to the file(s)/output.
+    
+    """
+    
     # Parse Command Line Arguments
     parser = argparse.ArgumentParser(description="Prepare file(s) for Laser Cutting")
     parser.add_argument('filepath', type=str,
@@ -228,8 +256,9 @@ def main():
                         help="save the pathed svg file (useful for debugging the pathing algorithm)")
     parser.add_argument('--debug', action='store_true', default=False,
                         help="enable debug mode")
+    
     global args
-    args = parser.parse_args()
+    args = parser.parse_args(argv) if argv else parser.parse_args()
 
     # Check how Many Printers are Selected
     printers = sum([args.uls, args.epilog])
@@ -246,11 +275,15 @@ def main():
     if args.uls:
         args.strokeWidth = 0.01 # hairline (0.25? 0.5?)
         args.strokeColor = colors.red
+        args.s_cut = 10 # TODO: measure these speeds (inches/second)
+        args.s_move = 100
         # etch: blue
         # raster: black
     elif args.epilog:
         args.strokeWidth = 0.01
         args.strokeColor = colors.black
+        args.s_cut = 10
+        args.s_move = 100
 
     # Convert the Height/Width from inches to points
     args.height *= 72
@@ -260,7 +293,7 @@ def main():
     # Make the Output Directory
     if args.output and not os.path.isdir(args.output):
         os.mkdir(args.output)
-
+    
     # Check if the Filepath is a File or a Folder
     if is_valid_file(args.filepath):
         prep_file(args.filepath)
@@ -272,7 +305,6 @@ def main():
         raise ValueError(f"'{args.filepath}' is not a valid pdf/svg file or directory containing pdf/svg files")
     else:
         raise FileNotFoundError(f"'{args.filepath}' not found")
-
 
 
 """functions for identifying svg files and working with filenames"""
@@ -329,8 +361,8 @@ def prep_file(filename: str):
 
     # TODO: get this to work
     # Remove Overlapping Lines
-    # elements = remove_overlap(elements)
-    # if args.debug: print(f"{n - len(elements)} overlapping elements removed")
+    #elements = remove_overlap(elements)
+    #if args.debug: print(f"{n - len(elements)} overlapping elements removed")
 
     # Join the Line Segments into Paths
     paths = make_paths(elements)
@@ -338,7 +370,11 @@ def prep_file(filename: str):
 
     # Sort the Paths
     paths = sort_paths(paths)
-
+    
+    # Estimate the Cutting Time
+    t = estimate_cutting_time(paths, args.s_move, args.s_cut)
+    print(f"estimated cutting time: {format_time(t)}")
+    
     # Draw the SVG
     d = draw_svg(paths, height, width)
     
@@ -353,6 +389,9 @@ def prep_file(filename: str):
     pdfname = folder + '\\' + name + ' - pathed.pdf'
     renderPDF.drawToFile(d, pdfname)
     print(f"pdf saved at '{pdfname}'")
+    
+    # Clear the Endpoint Map (to avoid collisions when prepping multiple files)
+    endpoint_list.clear()
 
 
 def load(filename: str) -> rl.shapes.Drawing:
@@ -451,7 +490,7 @@ def get_lines(svg: rl.shapes.Drawing) -> (list, tuple):
                 B = x.points[i:i + 2]
                 elements.append(Line(*A, *B))
                 A = B
-        elif type(x) == rl.shapes.Path and not path_is_closed(x):
+        elif type(x) in (rl.shapes.Path, rl.shapes.ArcPath):# and not path_is_closed(x):
             # TODO: update this section as reportLab paths get updated
 
             # break up the path into individual segments
@@ -642,25 +681,31 @@ def encode_point(P: tuple) -> tuple:
     return endpoint_list[P]
 
 
-def get_endpoints(element) -> tuple:
+def get_endpoints(element, encode:bool = True) -> tuple:
     """get the endpoints of a line segment (returns None for segments without endpoints, e.g. circles)"""
 
     P = Q = None
-    endpoints = False
+    endpoints = True
     if type(element) == rl.shapes.Line:
-        endpoints, P, Q = True, (element.x1, element.y1), (element.x2, element.y2)
+        P, Q = (element.x1, element.y1), (element.x2, element.y2)
     elif type(element) in (rl.shapes.Path, rl.shapes.ArcPath):
-        endpoints, P, Q = True, tuple(element.points[:2]), tuple(element.points[-2:])
+        if element.operators[-1] == operators.ClosePath:
+            P = Q = tuple(element.points[:2])
+        else:
+            P, Q = tuple(element.points[:2]), tuple(element.points[-2:])
     elif type(element) in (rl.shapes.Circle, rl.shapes.Ellipse, rl.shapes.Rect):
-        pass
+        endpoints = False
     elif type(element) in (rl.shapes.PolyLine, rl.shapes.Polygon):
         raise NotImplementedError("polylines/polygons shouldn't exist at this point in the process")
     elif type(element) == rl.shapes.Group:
         raise NotImplementedError("groups shouldn't exist at this point in the process")
     else:
         raise ValueError(f"'{type(element)}' is not a recognized type of reportLab.shapes element")
-
-    return encode_point(P), encode_point(Q) if endpoints else None
+    
+    if endpoints:
+        return (encode_point(P), encode_point(Q)) if encode else (P, Q)
+    else:
+        return None
 
 
 def get_endpoint_map(elements: list) -> tuple:
@@ -808,6 +853,52 @@ def sort_paths(paths: list) -> list:
 
     # Return the Ordered Path List
     return ordered
+
+# Estimate the Total Distance the Cutter Head Will Travel (speeds are in inches/second)
+# TODO: measure the cutting speed
+def estimate_cutting_time(paths: list, s_move: float = 10, s_cut: float = 1) -> float:
+    # Start at the Origin
+    t = 0
+    x = 0
+    y = 0
+    for path in paths:
+        # Get the Distance to the Start of the Path from the End of the Previous Path
+        t += dist.l2(x, y, *path.points[:2]) / s_move
+        
+        # Get the Distnace of the Path
+        t += estimate_path_time(path, s_move, s_cut)
+        
+        # Get the End Point of the Path
+        _, (x, y) = get_endpoints(path, False)
+    
+    # Return the Cutting Time Estimate in Seconds
+    return t
+
+# Estimate the Distance of a Single Path (including the initial MoveTo)
+def estimate_path_time(path: rl.shapes.Path, s_move: float, s_cut: float) -> (float, int, int):
+    t = 0
+    x, y = path.points[:2]
+    for op, points in operators.parse(path.operators[1:], path.points[2:]):
+        if op == operators.MoveTo:
+            t += dist.l2(x, y, *points) / s_move
+            x, y = points
+        if op == operators.LineTo:
+            t += dist.l2(x, y, *points) / s_cut
+            x, y = points
+        elif op == operators.ClosePath:
+            t += dist.l2(x, y, path.points[:2]) / s_cut
+            x, y = path.points[:2]
+        elif op == operators.CurveTo:
+            # Estimate the Length of the Bezier Curve From the Straight-Line Distance and the Distance Following the Bounding Polygon
+            lc = dist.l2(x, y, *points[-2:])
+            lp = dist.l2(x, y, *points[:2]) + sum(dist.l2(*points[i:i + 4]) for i in range(0, len(points) - 2, 2))
+            n = len(points) // 2                #  the degree of the bezier curve
+            d = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance
+            t += d / s_cut
+            x, y = path.points[-2:]
+    
+    # Return the Time in Seconds (converting from points to inches in the process: (points) * (seconds/inch) * (inches/point) = seconds)
+    return t / 72
 
 
 # Utility Functions for Debugging
