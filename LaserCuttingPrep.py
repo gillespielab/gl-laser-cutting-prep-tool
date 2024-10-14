@@ -65,6 +65,30 @@ class operators:
             j = i + operators._Parameters[o]
             yield o, points[i:j]
             i = j
+    
+    def length(x:float, y:float, op: int, points: list, start: list) -> (float, float, float, bool):
+        d = 0
+        cut = True
+        
+        if op == operators.MoveTo:
+            d = dist.l2(x, y, *points)
+            x, y = points
+            cut = False
+        if op == operators.LineTo:
+            d = dist.l2(x, y, *points)
+            x, y = points
+        elif op == operators.ClosePath:
+            d = dist.l2(x, y, *start)
+            x, y = start
+        elif op == operators.CurveTo:
+            # Estimate the Length of the Bezier Curve From the Straight-Line Distance and the Distance Following the Bounding Polygon
+            lc = dist.l2(x, y, *points[-2:])
+            lp = dist.l2(x, y, *points[:2]) + sum(dist.l2(*points[i:i + 4]) for i in range(0, len(points) - 2, 2))
+            n = len(points) // 2                #  the degree of the bezier curve
+            d = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance
+            x, y = points[-2:]
+        
+        return x, y, d, cut
 
 
 # Standard Distance Formula
@@ -857,6 +881,19 @@ def sort_paths(paths: list) -> list:
 # Estimate the Total Distance the Cutter Head Will Travel (speeds are in inches/second)
 # TODO: measure the cutting speed
 def estimate_cutting_time(paths: list, s_move: float = 10, s_cut: float = 1) -> float:
+    
+    # Estimate the Cutting Time for a Single Path (excluding the initial MoveTo)
+    def estimate_path_time(path: rl.shapes.Path, s_move: float, s_cut: float) -> (float, int, int):
+        t = 0
+        start = path.points[:2]
+        x, y = start
+        for op, points in operators.parse(path.operators[1:], path.points[2:]):
+            x, y, d, cut = operators.length(x, y, op, points, start)
+            t += d / (s_cut if cut else s_move)
+        
+        # Return the Time in Seconds (converting from points to inches in the process: (points) * (seconds/inch) * (inches/point) = seconds)
+        return t / 72
+    
     # Start at the Origin
     t = 0
     x = 0
@@ -873,32 +910,6 @@ def estimate_cutting_time(paths: list, s_move: float = 10, s_cut: float = 1) -> 
     
     # Return the Cutting Time Estimate in Seconds
     return t
-
-# Estimate the Distance of a Single Path (including the initial MoveTo)
-def estimate_path_time(path: rl.shapes.Path, s_move: float, s_cut: float) -> (float, int, int):
-    t = 0
-    x, y = path.points[:2]
-    for op, points in operators.parse(path.operators[1:], path.points[2:]):
-        if op == operators.MoveTo:
-            t += dist.l2(x, y, *points) / s_move
-            x, y = points
-        if op == operators.LineTo:
-            t += dist.l2(x, y, *points) / s_cut
-            x, y = points
-        elif op == operators.ClosePath:
-            t += dist.l2(x, y, path.points[:2]) / s_cut
-            x, y = path.points[:2]
-        elif op == operators.CurveTo:
-            # Estimate the Length of the Bezier Curve From the Straight-Line Distance and the Distance Following the Bounding Polygon
-            lc = dist.l2(x, y, *points[-2:])
-            lp = dist.l2(x, y, *points[:2]) + sum(dist.l2(*points[i:i + 4]) for i in range(0, len(points) - 2, 2))
-            n = len(points) // 2                #  the degree of the bezier curve
-            d = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance
-            t += d / s_cut
-            x, y = path.points[-2:]
-    
-    # Return the Time in Seconds (converting from points to inches in the process: (points) * (seconds/inch) * (inches/point) = seconds)
-    return t / 72
 
 
 # Utility Functions for Debugging
