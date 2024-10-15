@@ -58,6 +58,8 @@ class operators:
         3: 0
     }
 
+    _Names = ['Move To', 'Line To', 'Curve To', 'Close Path']
+
     def parse(codes: list, points: list) -> (int, list):
         """yields each operator code with its associated control points"""
         i = 0
@@ -66,29 +68,35 @@ class operators:
             yield o, points[i:j]
             i = j
     
-    def length(x:float, y:float, op: int, points: list, start: list) -> (float, float, float, bool):
-        d = 0
-        cut = True
+    # Estimate the Length of a Single Path Element given the starting point of the element (x, y), the op-code (op), the control points (points), and the start of the path (start = [x0, y0])
+    def length(x: float, y: float, op: int, points: list, start: list) -> (float, float, float, bool):
+        # initialize the variable for the path length
+        l = 0
+
+        # data validation (currently disabled)
+        """
+        if op not in operators._Parameters:
+            raise KeyError(f"unregocnized opcode {op}, known values are: [" + ', '.join(f"{o}: {n}" for o, n in zip(operators._Parameters.keys(), operators._Names)) + ']')
+        elif op != operators.CurveTo and len(points) != operators._Parameters[op]:
+            raise ValueError(f"wrong number of control values ({len(points)}) for '{operators._Names[op]}'. expected {operators._Parameters[op]}")
+        #"""
         
-        if op == operators.MoveTo:
-            d = dist.l2(x, y, *points)
-            x, y = points
-            cut = False
-        if op == operators.LineTo:
-            d = dist.l2(x, y, *points)
+        # select the appropriate formula to use
+        if op in (operators.MoveTo, operators.LineTo):
+            l = dist.l2(x, y, *points)
             x, y = points
         elif op == operators.ClosePath:
-            d = dist.l2(x, y, *start)
+            l = dist.l2(x, y, *start)
             x, y = start
         elif op == operators.CurveTo:
             # Estimate the Length of the Bezier Curve From the Straight-Line Distance and the Distance Following the Bounding Polygon
             lc = dist.l2(x, y, *points[-2:])
             lp = dist.l2(x, y, *points[:2]) + sum(dist.l2(*points[i:i + 4]) for i in range(0, len(points) - 2, 2))
             n = len(points) // 2                #  the degree of the bezier curve
-            d = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance
+            l = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance (from https://doi.org/10.1016/0925-7721(95)00054-2) - this estimate isn't great as is, but it's good enough for this
             x, y = points[-2:]
         
-        return x, y, d, cut
+        return x, y, l, op != operators.MoveTo
 
 
 # Standard Distance Formula
