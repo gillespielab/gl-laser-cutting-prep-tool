@@ -13,6 +13,17 @@ USAGE:
 
 RECOMMENDED:
     >>> LaserCuttingPrep.py <filename> --output <output path> --margin 0.3 --uls --centerv --debug
+    OR
+    >>> main([r"<filename>", '--output', r"<output path>", '--margin', '0.3', '--uls', '--centerv', '--debug'])
+    OR
+    >>> main(r"<filename> --output <output path> --margin 0.3 --uls --centerv --debug".split(' '))
+
+All 3 of these calls are equivalent, but the first should be used in a terminal, while the second and third 
+should be used in a python console (like Spyder or Jupyter) after running the file. Also, note that the third
+option only works if there are no spaces in either the filename or the output path; its main advantage over 
+the second option is that it's more convenient to type, so it isn't really worth making a structure to 
+get around this (you could use a custom separator if you really want to though).
+
 
 INSTALLING DEPENDENCIES
     Run the following commands in an Anaconda prompt, run as an administrator:
@@ -93,7 +104,7 @@ class operators:
             lc = dist.l2(x, y, *points[-2:])
             lp = dist.l2(x, y, *points[:2]) + sum(dist.l2(*points[i:i + 4]) for i in range(0, len(points) - 2, 2))
             n = len(points) // 2                #  the degree of the bezier curve
-            l = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance (from https://doi.org/10.1016/0925-7721(95)00054-2) - this estimate isn't great as is, but it's good enough for this
+            l = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance (from https://doi.org/10.1016/0925-7721(95)00054-2)
             x, y = points[-2:]
         
         return x, y, l, op != operators.MoveTo
