@@ -107,6 +107,7 @@ class operators:
             l = (2*lc + (n - 1)*lp) / (n + 1)   #  the estimated distance (from https://doi.org/10.1016/0925-7721(95)00054-2)
             x, y = points[-2:]
         
+        # Return the ending position (x, y), the estimated path length (l), and whether or not the segment is a cut (as opposed to a move)
         return x, y, l, op != operators.MoveTo
 
 
@@ -287,6 +288,8 @@ def main(argv:list = None):
                         help='indicates that cut should have equal margins on the top/bottom (overrides --margin)')
     parser.add_argument('--centerh', action='store_true', default=False,
                         help='indicates that cut should have equal margins on the left/right (overrides --margin)')
+    parser.add_argument('--preserve-overlap', action='store_true', default=False,
+                        help='indicates that overlapping lines should not be unified')
     parser.add_argument('--uls', action='store_true', default=False,
                         help='indicates that the cutter is a ULS machine')
     parser.add_argument('--epilog', action='store_true', default=False,
@@ -402,10 +405,11 @@ def prep_file(filename: str):
     elements = get_lines(svg)
     n = len(elements)
 
-    # TODO: get this to work
+    # TODO: figure out if this actually saves cutting time
     # Remove Overlapping Lines
-    #elements = remove_overlap(elements)
-    #if args.debug: print(f"{n - len(elements)} overlapping elements removed")
+    if not args.preserve_overlap:
+        elements = remove_overlap(elements)
+        if args.debug: print(f"{n - len(elements)} overlapping elements removed")
 
     # Join the Line Segments into Paths
     paths = make_paths(elements)
@@ -414,6 +418,7 @@ def prep_file(filename: str):
     # Sort the Paths
     paths = sort_paths(paths)
     
+    # TODO: estimate the cutter speed
     # Estimate the Cutting Time
     t = estimate_cutting_time(paths, args.s_move, args.s_cut)
     print(f"estimated cutting time: {format_time(t)}")
@@ -623,80 +628,212 @@ def transform(elements: list, scale: float = 1, dx: float = 0, dy: float = 0):
             e.ry *= scale
 
 
-"""
-def are_parallel(l1:draw.shapes.Line, l2:draw.shapes.Line) -> bool:
-    " ""Test if 2 Lines are Parallel" ""
+
+def point_is_on_line(P: tuple, Q: tuple, X: tuple) -> bool:
+    """Determine if the Point X is Within eps of the Line PQ"""
     
-    # Check the Types of the Lines
-    #if type(l1) != draw.elements.Line or type(l2) != draw.elements.Line:
-    #    raise TypeError(f"both l1 and l2 must be type '{draw.elements.line}'")
+    """
+    Formula Derivation (capital letters are points, lowercase letters are scalars)
     
-    # Get the Points
-    (a1, a2), (b1, b2) = get_endpoints(l1)
-    (c1, c2), (d1, d2) = get_endpoints(l2)
+    U = Q - P = (a, b, 0)
+    V = X - P = (c, d, 0)
     
-    # Test if The Lines are Parallel
-    return ((a1 - b1) * (c2 - d2) == (c1 - d1) * (a2 - b2) and
-            (a1 - c1) * (b2 - d2) == (b1 - d1) * (a2 - c2) and 
-            (a1 - d1) * (c2 - b2) == (c1 - b1) * (a2 - d2))
-"""
+    d = |V|sin(θ)
+    sin(θ) = |UxV|/|U||V|
+    ∴ d = |UxV|/|U|
+    
+    UxV = (0, 0, ad - bc)
+    ∴ |UxV| = |ad - bc|
+    ∴ d^2 = (ad - bc)^2 / (a^2 + b^2)
+    
+    
+    Possible Division by 0: a^2 + b^2 = 0 ∴ X = P
+    Implicit Possible Division by 0: c^2 = d^2 = 0 ∴ X = Q
+    
+    These cases can easilly be tested for separately. Note that in the second 
+    case, the division by 0 has been hidden since assumed |V|/|V| = 1 in the 
+    derivation. This likely won't hurt the numerical stability, but it's still 
+    worth avoiding by putting that in a separate check. That being said, these 
+    cases are called in the function which calls this function, so here they're disabled
+    """
+    
+    # Check the Division by 0 Cases
+    eps2 = args.epsilon**2
+    if dist.l2s(*P, *X) < eps2 or dist.l2s(*Q, *X) < eps2:
+        return True
+    
+    # Unpack the Points
+    x1, y1 = P
+    x2, y2 = Q
+    x3, y3 = X
+    
+    # Compute the Relavent Vector Components
+    a = x2 - x1
+    b = y2 - y1
+    c = x3 - x1
+    d = y3 - y1
+    
+    # Compute the Distance Squared From the Point to the Line
+    d = (a*d - b*c)**2 / (a**2 + b**2)
+    
+    # Compare that Distance Squared to the Tolerance Squared
+    return d < eps2
 
 
-def point_is_on_line_segment(P: tuple, A: tuple, B: tuple):
-    """check if a point (x0, y0) lies on the line segment AB"""
+def point_is_on_line_segment(P: tuple, Q: tuple, X: tuple):
+    """check if a point X lies on the line segment PQ"""
+    
+    """
+    I wish I remembered how I did this, but I remember thinking really hard 
+    while drawing it out on the white board. The points_are_equal() statements 
+    are testing edge cases though, so the heart of it is the last piece, where 
+    we are only testing if the point X is on the segment PQ; nothing about 
+    if the segment X is a part of is colinear/overlapping the segment PQ
+    """
+    
     # Get the Points
-    (x0, y0), (x1, y1), (x2, y2) = P, A, B
+    (x1, y1), (x2, y2), (x3, y3) = P, Q, X
 
     # Check if the Point is on the Line Segment
-    return ((y0 < y1) != (y0 < y2) and
-            (x0 < x1) != (x0 < x2) and
-            abs((x2 - x1) * (y0 - y1) - (y2 - y1) * (x0 - x1)) < args.epsilon)
+    return (points_are_equal(P, X) or points_are_equal(Q, X) or
+        (y3 < y1) != (y3 < y2) and (x3 < x1) != (x3 < x2) and point_is_on_line(P, Q, X))
+
 
 
 def unify_lines(l1: rl.shapes.Line, l2: rl.shapes.Line):
     """test if 2 lines overlap, creating a new line which encompases both lines"""
 
-    # Get the Points
+    """
+    I don't fully remember how I derived this, but just looking at it I think it's 
+    pretty intuitive, no? Basically, if the lines aren't colinear, then at most 
+    one of the tests can return True, and if they are colinear than there are a 
+    few cases:
+        Case 1: count = 4, full overlap
+            A ----- B
+            C ----- D
+        Case 2: count = 0, no overlap
+            A ----- B
+                       C ----- D
+        Case 3: count = 2, no overlap (but unification is possible, just not desired)
+            A ----- B
+                    C ----- D
+        Case 4: count = 2, partial overlap (C on AB, B on CD)
+            A ----- B
+                C ----- D
+        Case 5: count = 2, full overlap (C and D on AB)
+            A ----- B
+              C - D
+        Case 6: count = 3, full overlap (1 endpoint is shared)
+            A ----- B
+              C --- D
+        (other cases are symmetrical to cases 2-6)
+        Case 7: count = 3, full overlap (1 endpoint is shared)
+            A ----- B
+            C --- D
+        Case 7: count = 2, full overlap (A and B on CD)
+              A - B
+            C ----- D
+        Case 8: count = 2, partial overlap (A on CD and D on AB)
+                A ----- B
+            C ----- D
+        Case 9, count = 2, no overlap (but unification is possible, just not desired)
+                    A ----- B
+            C ----- D
+        Case 10, count = 0, no overlap
+                       A ----- B
+            C ----- D
+        (remaining cases are symmetrical by flipping the order of C and D, and are not shown)
+    
+    No matter the case, if unification is required, the optimal line segment is 
+    the one which maximizes the length of the resulting segment. But in practice 
+    we can speed up computation by using different approaches for different cases.
+    
+    Also, note that if count == 1 then the lines can't be parallel (and thus not 
+    colinear), and if count == 0 then the lines can't overlap
+    """
+    
+    # Get the Sanitized Endpoints
     A, B = get_endpoints(l1)
     C, D = get_endpoints(l2)
-
+    points = [A, B, C, D]
+    
+    # Check for Lines which Share Endpoints but Aren't Parallel
+    if not all([
+                point_is_on_line(C, D, A),
+                point_is_on_line(C, D, B),
+                point_is_on_line(A, B, C),
+                point_is_on_line(A, B, D)
+            ]):
+        return False
+    
     # Record Which Points Exist Within the Other Line Segment (these points are not endpoints of the new line)
     endpoints = [
-        point_is_on_line_segment(A, C, D),
-        point_is_on_line_segment(B, C, D),
-        point_is_on_line_segment(C, A, B),
-        point_is_on_line_segment(D, A, B)
+        point_is_on_line_segment(C, D, A),
+        point_is_on_line_segment(C, D, B),
+        point_is_on_line_segment(A, B, C),
+        point_is_on_line_segment(A, B, D)
     ]
-
+    
+    # Count the Number of Tests which Returned True
+    count = sum(endpoints)
+    
     # Check if the Lines Overlap
-    if sum(endpoints) == 2:
+    if count == 2:
         # Find the New Endpoints
-        points = [[A, B, C, D][i] for i in range(4) if not endpoints[i]]
-
-        # Return the New Line Segment
-        return Line(points[0][0], points[0][1], points[1][0], points[1][1])
+        P, Q = [P for P, e in zip(points, endpoints) if not e]
+        
+        # Check if Unification is Desired
+        if abs(dist.l2(*P, *Q) - (dist.l2(*A, *B) + dist.l2(*C, *D))) < args.epsilon:
+            # The Lines Share 1 Endpoint but don't Overlap
+            return False
+        else:
+            # Return the New Line Segment
+            return Line(*P, *Q)
+    elif count == 3:
+        # The 2 Lines Share 1 Endpoint and Overlap
+        # Select the Points which Maximize the Length of the Line Segment
+        P = [P for P, e in zip(points, endpoints) if not e][0]
+        Q = max(points, key = lambda Q : dist.l2s(*P, *Q))
+        return Line(*P, *Q)
+    elif count == 4:
+        # The 2 Lines are the Same Line (i.e. A == C and B == D)
+        return Line(*A, *B)
     else:
         # The Lines Do Not Overlap
         return False
 
+
+def is_line(element):
+    return (
+        type(element) == rl.shapes.Line or 
+        (
+            type(element) == rl.shapes.Path and 
+            len(element.operators) == 2 and 
+            element.operators[0] == operators.MoveTo and 
+            element.operators[1] == operators.LineTo
+        )
+    )
 
 def remove_overlap(elements: list):
     """Simplify Overlapping Lines"""
 
     # Look at All Distinct Pairs of Lines
     simplified = []
-    used = set()
+    used = [0]*len(elements)
     for i in ctrange(len(elements), N=len(elements)*(len(elements) - 1)//2, desc='merging overlapping lines'):
         # Check if the line was already absorbed into a previous line
-        if i not in used:
+        if not used[i]:
+            # Mark the Element as Used (this step is unnecessary)
+            used[i] = 1
+            
             # create a reference to store the merged lines
             line = elements[i]
 
             # Don't bother looking for overlap unless it's a straight line segment
-            if type(elements[i]) == rl.shapes.Line:
-                # look at all the lines which haven't been visited yet
+            if is_line(elements[i]):
+                # look at all the other lines which haven't been used yet
                 for j in range(i + 1, len(elements)):
-                    if type(elements[j]) == rl.shapes.Line and j not in used:
+                    if is_line(elements[j]) and not used[j]:
                         # Try to Combine the Lines
                         union = unify_lines(line, elements[j])
 
@@ -704,11 +841,11 @@ def remove_overlap(elements: list):
                         if union:
                             # save the new unified line, and mark that the jth line has been used
                             line = union
-                            used.add(j)
+                            used[j] = 1
 
             # Add the line (or element) to the new list
             simplified.append(line)
-
+    
     # Return the New Element List
     return simplified
 
