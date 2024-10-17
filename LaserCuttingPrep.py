@@ -3,10 +3,9 @@
 This tool streamlines the workflow for preparing files for laser cutters.
 
 Instructions:
-    1. Export the desired cuts as a pdf (DO NOT export svg files directly, that's currently broken)
-    2. Convert the pdf to an svg using Inkscape, Illustrator, or svgconverter.com/pdf-to-svg
-    3. Run this tool on the svg
-    4. Check the results in Illustrator/Inkscape
+    1. Export the desired cuts as a pdf
+    2. Run this tool on the pdf
+    3. Check the results in Illustrator/Inkscape
 
 USAGE:
     >>> LaserCuttingPrep.py <filename> <options>
@@ -653,8 +652,7 @@ def point_is_on_line(P: tuple, Q: tuple, X: tuple) -> bool:
     These cases can easilly be tested for separately. Note that in the second 
     case, the division by 0 has been hidden since assumed |V|/|V| = 1 in the 
     derivation. This likely won't hurt the numerical stability, but it's still 
-    worth avoiding by putting that in a separate check. That being said, these 
-    cases are called in the function which calls this function, so here they're disabled
+    worth avoiding by putting that in a separate check.
     """
     
     # Check the Division by 0 Cases
@@ -674,10 +672,10 @@ def point_is_on_line(P: tuple, Q: tuple, X: tuple) -> bool:
     d = y3 - y1
     
     # Compute the Distance Squared From the Point to the Line
-    d = (a*d - b*c)**2 / (a**2 + b**2)
+    d2 = (a*d - b*c)**2 / (a**2 + b**2)
     
     # Compare that Distance Squared to the Tolerance Squared
-    return d < eps2
+    return d2 < eps2
 
 
 def point_is_on_line_segment(P: tuple, Q: tuple, X: tuple):
