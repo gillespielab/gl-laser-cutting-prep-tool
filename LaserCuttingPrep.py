@@ -46,6 +46,8 @@ import reportlab.graphics as rl
 from reportlab.graphics import renderPDF
 from reportlab.graphics.renderbase import colors
 from svglib.svglib import svg2rlg
+import numpy as np
+from scipy.optimize import curve_fit
 #import drawsvg as draw
 #from pypdf import PdfMerger
 
@@ -171,8 +173,6 @@ def Line(x1: float, y1: float, x2: float, y2: float, **kwargs):
     """create a line between the 2 end points"""
     return Path([x1, y1, x2, y2], [operators.MoveTo, operators.LineTo], **kwargs)
     #return rl.shapes.Line(x1, y1, x2, y2, **kwargs)
-
-metrics = defaultdict(int)
 
 def reverse_path(pts:list, ops:list):
     ops = [operators.MoveTo] + ops[1:][::-1]
@@ -320,15 +320,17 @@ def main(argv:list = None):
     if args.uls:
         args.strokeWidth = 0.01 # hairline (0.25? 0.5?)
         args.strokeColor = colors.red
-        args.s_cut = 10 # TODO: measure these speeds (inches/second)
-        args.s_move = 100
+        args.s_cut = 3.204843
+        args.s_move = 1615.673
+        args.t_offset = -25.67509
         # etch: blue
         # raster: black
     elif args.epilog:
         args.strokeWidth = 0.01
         args.strokeColor = colors.black
-        args.s_cut = 10
-        args.s_move = 100
+        args.s_cut = 1 # TODO: measure these speeds (inches/second)
+        args.s_move = 1000
+        args.t_offset = 0
 
     # Convert the Height/Width from inches to points
     args.height *= 72
@@ -671,8 +673,14 @@ def point_is_on_line(P: tuple, Q: tuple, X: tuple) -> bool:
     c = x3 - x1
     d = y3 - y1
     
+    # Extra Safety Check
+    D = a**2 + b**2
+    if D == 0:
+        # this means that a = b = 0, and thus a*d - b*c = 0 as well
+        return True
+    
     # Compute the Distance Squared From the Point to the Line
-    d2 = (a*d - b*c)**2 / (a**2 + b**2)
+    d2 = (a*d - b*c)**2 / D
     
     # Compare that Distance Squared to the Tolerance Squared
     return d2 < eps2
@@ -1034,7 +1042,7 @@ def sort_paths(paths: list) -> list:
 
 # Estimate the Total Distance the Cutter Head Will Travel (speeds are in inches/second)
 # TODO: measure the cutting speed
-def estimate_cutting_time(paths: list, s_move: float = 10, s_cut: float = 1) -> float:
+def estimate_cutting_time(paths: list, s_move: float = 7851.39, s_cut: float = 3.14376) -> float:
     
     # Estimate the Cutting Time for a Single Path (excluding the initial MoveTo)
     def estimate_path_time(path: rl.shapes.Path, s_move: float, s_cut: float) -> (float, int, int):
@@ -1063,7 +1071,7 @@ def estimate_cutting_time(paths: list, s_move: float = 10, s_cut: float = 1) -> 
         _, (x, y) = get_endpoints(path, False)
     
     # Return the Cutting Time Estimate in Seconds
-    return t
+    return max(t + args.t_offset, 0)
 
 
 # Utility Functions for Debugging
@@ -1084,7 +1092,26 @@ class utils:
         simplified = remove_overlap(elements)
         paths = make_paths(simplified, *get_endpoint_map(simplified))
         return svg, elements, simplified, paths
+    
+    def sec(hours, minutes, seconds):
+        return 3600 * hours + 60 * minutes + seconds
 
+class timingData:
+    # Cutting/Move Distances (pts) vs Total Cut Time (sec) for the ULS Dual CO2 Laser Cutter
+    X = np.array([[1819, 105101], [2169, 78932], [2533, 70499], [5051, 168980], [1488, 47535], [3796, 57129], [1534, 36618], [1148, 47550]]).transpose()
+    Y = np.array([592, 700, 826, 1661, 469, 1178, 487, 357])
+    
+    # Fit Function for the Time Data
+    def time(X, a, b, c):
+        return a * X[0] + b * X[1] + c
+    
+    def fit_dual_uls():
+        params, var = curve_fit(timingData.time, timingData.X, timingData.Y)
+        var = np.sqrt(np.diag(var))
+        for i in range(2):
+            var[i] /= params[i] ** 2 # dy/y = |-1| dx/x with y = x^-1 -> dy = dx / x^2
+            params[i] = 1 / params[i]
+        return params, var
 
 # Run the Program
 if __name__ == '__main__':
