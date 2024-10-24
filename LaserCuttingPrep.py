@@ -14,7 +14,7 @@ RECOMMENDED:
     >>> LaserCuttingPrep.py <filename> --output <output path> --margin 0.3 --uls --centerv --debug
     OR
     >>> main([r"<filename>", '--output', r"<output path>", '--margin', '0.3', '--uls', '--centerv', '--debug'])
-    OR
+    OR (if filepaths do not contain spaces)
     >>> main(r"<filename> --output <output path> --margin 0.3 --uls --centerv --debug".split(' '))
 
 All 3 of these calls are equivalent, but the first should be used in a terminal, while the second and third 
@@ -173,6 +173,8 @@ def Line(x1: float, y1: float, x2: float, y2: float, **kwargs):
     """create a line between the 2 end points"""
     return Path([x1, y1, x2, y2], [operators.MoveTo, operators.LineTo], **kwargs)
     #return rl.shapes.Line(x1, y1, x2, y2, **kwargs)
+
+metrics = defaultdict(int)
 
 def reverse_path(pts:list, ops:list):
     ops = [operators.MoveTo] + ops[1:][::-1]
@@ -419,10 +421,10 @@ def prep_file(filename: str):
     # Sort the Paths
     paths = sort_paths(paths)
     
-    # TODO: estimate the cutter speed
     # Estimate the Cutting Time
-    t = estimate_cutting_time(paths, args.s_move, args.s_cut)
-    print(f"estimated cutting time: {format_time(t)}")
+    t = None
+    try: t = estimate_cutting_time(paths, args.s_move, args.s_cut)
+    except: pass
     
     # Draw the SVG
     d = draw_svg(paths, height, width)
@@ -441,6 +443,10 @@ def prep_file(filename: str):
     
     # Clear the Endpoint Map (to avoid collisions when prepping multiple files)
     endpoint_list.clear()
+    
+    # Print the Estimated Cutting Time
+    if t: print(f"estimated cutting time: {format_time(t)}")
+    else: print("cutting time estimation failed")
 
 
 def load(filename: str) -> rl.shapes.Drawing:
@@ -487,7 +493,11 @@ def draw_svg(elements: list, h0, w0, **svg_args) -> rl.shapes.Drawing:
     x0, y0, x1, y1 = temp.getBounds()
     w = x1 - x0
     h = y1 - y0
-
+    
+    # Reduce the Size of the PDF
+    args.width = min(w + 2 * args.margin, args.width)
+    args.height = min(h + 2 * args.margin, args.height)
+    
     # Calculate the Margins
     mx = my = args.margin
     if args.center:
@@ -1105,13 +1115,19 @@ class timingData:
     def time(X, a, b, c):
         return a * X[0] + b * X[1] + c
     
-    def fit_dual_uls():
+    def fit_dual_uls(invert_speeds:bool = True):
         params, var = curve_fit(timingData.time, timingData.X, timingData.Y)
         var = np.sqrt(np.diag(var))
-        for i in range(2):
-            var[i] /= params[i] ** 2 # dy/y = |-1| dx/x with y = x^-1 -> dy = dx / x^2
-            params[i] = 1 / params[i]
+        if invert_speeds:
+            for i in range(2):
+                var[i] /= params[i] ** 2 # dy/y = |-1| dx/x with y = x^-1 -> dy = dx / x^2
+                params[i] = 1 / params[i]
         return params, var
+    
+    def estimate_error_dual_uls(params = None):
+        # Compute the RMS %Error on the Data for the Dual CO2 ULS Laser
+        if not params: params , _ = timingData.fit_dual_uls(False)
+        return 100*np.sqrt(sum(((timingData.time(x, *params) - y)/y)**2 for x, y in zip(timingData.X.transpose(), timingData.Y))/len(timingData.Y))
 
 # Run the Program
 if __name__ == '__main__':
