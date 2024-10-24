@@ -14,7 +14,7 @@ RECOMMENDED:
     >>> LaserCuttingPrep.py <filename> --output <output path> --margin 0.3 --uls --centerv --debug
     OR
     >>> main([r"<filename>", '--output', r"<output path>", '--margin', '0.3', '--uls', '--centerv', '--debug'])
-    OR (if filepaths do not contain spaces)
+    OR
     >>> main(r"<filename> --output <output path> --margin 0.3 --uls --centerv --debug".split(' '))
 
 All 3 of these calls are equivalent, but the first should be used in a terminal, while the second and third 
@@ -407,7 +407,10 @@ def prep_file(filename: str):
     # Get All the Lines
     elements = get_lines(svg)
     n = len(elements)
-
+    
+    # Estimate the Initial Cutting Time
+    t0 = estimate_cutting_time(elements, args.s_move, args.s_cut) if args.debug else None
+    
     # TODO: figure out if this actually saves cutting time
     # Remove Overlapping Lines
     if not args.preserve_overlap:
@@ -445,8 +448,14 @@ def prep_file(filename: str):
     endpoint_list.clear()
     
     # Print the Estimated Cutting Time
-    if t: print(f"estimated cutting time: {format_time(t)}")
-    else: print("cutting time estimation failed")
+    if t: 
+        if args.debug:
+            reduction = round(100*(t0 - t)/t0)
+            print(f"estimated cutting time: {format_time(t)} ({reduction}% reduction)")
+        else:
+            print(f"estimated cutting time: {format_time(t)}")
+    else: 
+        print("cutting time estimation failed")
 
 
 def load(filename: str) -> rl.shapes.Drawing:
