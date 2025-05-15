@@ -11,3 +11,6 @@
 8. Add relief cuts to the drawing using the line tool as necessary
 9. Export each sheet as a pdf (right click the tab, and everything on the current sheet will be included in the pdf)
 10. Run the laser cutting prep tool in a python terminal
+
+## Adding Support for a New Machine
+Currently, formatting settings are only supported for ULS and Epilog laser cutters. To add support for a new printer which has different formatting requirements, you need to edit LaserCuttingPrep.py. First, add a flag where the "# TODO : add a flag for new printers here" comment is, then set the parameters where the "TODO : add more printer setting here as needed" comment is. Lastly, update the list of printer options found where the " # TODO: add new printer flags here" comment is. For all of these steps it should be fairly straightforward use the ULS/Epilog settings code as an example.
