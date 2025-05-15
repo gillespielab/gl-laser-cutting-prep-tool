@@ -295,6 +295,7 @@ def main(argv:list = None):
                         help='indicates that the cutter is a ULS machine')
     parser.add_argument('--epilog', action='store_true', default=False,
                         help='indicates that the cutter is an Epilog machine')
+    # TODO : add a flag for new printers here
     parser.add_argument('--preserve-rectangles', action='store_true', default=False,
                         help="use this if none of your parts are true rectangles")
     parser.add_argument('--autoscale', action='store_true', default=False,
@@ -308,7 +309,7 @@ def main(argv:list = None):
     args = parser.parse_args(argv) if argv else parser.parse_args()
 
     # Check how Many Printers are Selected
-    printers = sum([args.uls, args.epilog])
+    printers = sum([args.uls, args.epilog]) # TODO: add new printer flags here
     if printers == 0:
         args.uls = True
         print("warning: no printer selected, defaulting to ULS")
