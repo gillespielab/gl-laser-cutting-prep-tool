@@ -320,7 +320,7 @@ def main(argv:list = None):
 
     # Set Format Variables by Printer
     if args.uls:
-        args.strokeWidth = 0.01 # hairline (0.25? 0.5?)
+        args.strokeWidth = 0.01
         args.strokeColor = colors.red
         args.s_cut = 3.204843
         args.s_move = 1615.673
@@ -333,6 +333,7 @@ def main(argv:list = None):
         args.s_cut = 1 # TODO: measure these speeds (inches/second)
         args.s_move = 1000
         args.t_offset = 0
+    # TODO : add more printer setting here as needed
 
     # Convert the Height/Width from inches to points
     args.height *= 72
