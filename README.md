@@ -13,7 +13,7 @@
 10. Run the laser cutting prep tool in a python terminal (usage instructions are available using flags such as -?, -h, or --help)
 
 ## Adding Support for a New Machine
-Currently, formatting settings are only supported for ULS and Epilog laser cutters. To add support for a new printer which has different formatting requirements, you need to edit LaserCuttingPrep.py. First, add a flag where the "# TODO : add a flag for new printers here" comment is, then set the parameters where the "TODO : add more printer setting here as needed" comment is. Lastly, update the list of printer options found where the " # TODO: add new printer flags here" comment is. For all of these steps it should be fairly straightforward use the ULS/Epilog settings code as an example.
+Currently, formatting settings are only supported for ULS and Epilog laser cutters. To add support for a new printer which has different formatting requirements, you need to edit LaserCuttingPrep.py. First, add a flag where the "# TODO : add a flag for new printers here" comment is, then set the parameters where the "TODO : add more printer setting here as needed" comment is. Lastly, update the list of printer options found where the " # TODO: add new printer flags here" comment is. Unless a new category of formatting is required, it should be fairly straightforward to use the ULS/Epilog settings code as an example.
 
 ## Notes
 This tool is highly dependent on the reportlab python package, and may need to be updated as that library is updated.
