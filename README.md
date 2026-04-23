@@ -20,3 +20,8 @@ This tool is highly dependent on the reportlab python package, and may need to b
 
 ## Dependencies
 reportlab, svglib, scipy, pypdf, numpy
+
+## Prepping Files by Hand
+To prepare a file by hand, first follow steps 1-9 to create the initial pdf, then follow the steps below:
+1. Adjust line formatting as specified by the laser cutter manufacturer (e.g. at time of writing, ULS lasers cut on red lines with a thickness of 0.01pt, etch blue lines with a thickness of 0.01pt, and raster anything else unless otherwise programmed in the print settings on the machine).
+2. While not strictly necessary (especially for simple components with fewer/longer edges), it is highly recommened you join line segments together in as efficient a way as possible (combining any overlapping lines into a single line segment as you go). This sets the paths the machine will actually follow while cutting, and if you skip this step the machine will likely cut line segments in a seemingly random order, drastically increasing the cut time, and often decreasing the cut quality (possibly requiring extra passes to complete compared to a well-pathed file).
